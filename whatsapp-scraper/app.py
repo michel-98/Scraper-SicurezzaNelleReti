@@ -6,6 +6,9 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from sortedcontainers import SortedSet
+from flask_restful import Api, request
+from flask import Flask
+
 import traceback
 
 global SCROLL_TO, SCROLL_SIZE
@@ -19,6 +22,15 @@ CONTACT_NAME_DIV = 'zoWT4'
 CONVERSATION_PANEL = '_33LGR'
 USER_DATA_DIR = 'D:/user-data'
 EXPORT_PATH = 'collected_data/'
+
+app = Flask(__name__)
+api = Api(app)
+
+in_memory_datastore = {
+    "COBOL": {"name": "COBOL", "publication_year": 1960, "contribution": "record data"},
+    "ALGOL": {"name": "ALGOL", "publication_year": 1958, "contribution": "scoping and nested functions"},
+    "APL": {"name": "APL", "publication_year": 1962, "contribution": "array processing"},
+}
 
 
 class MessageQuoted:
@@ -155,13 +167,14 @@ def pane_scroll(dr):
     SCROLL_TO += SCROLL_SIZE
 
 
-def get_messages(driver, contact_list):
+def get_messages(driver, contact_list, contatti):
     global SCROLL_SIZE
     print('>>> getting messages')
     conversations = []
     for contact in contact_list:
 
-        if (contact != "Archiviate"):  # ignore archive container
+        if (contact != "Archiviate") and (
+                contatti.__sizeof__() == 0 or contact.lower() in map(str.lower, contatti)):  # ignore archive container
             # if (contact == "Triage forense"):  # to remove this, just for test
             sleep(2)
             try:
@@ -177,24 +190,27 @@ def get_messages(driver, contact_list):
             lengthActual = 0
             finished = True
             while finished:  # before I discover all messages and then I wrote them to the list
-                conversation_pane = driver.find_element_by_xpath(
-                    "//div[@class='" + CONVERSATION_PANEL + "']")
-                elements = driver.find_elements_by_xpath("//div[@class='copyable-text']")
-                if lengthActual == len(elements):
-                    # Find data-testid="conversation-panel-messages" in the DOM to get class name
-                    stri = conversation_pane.get_attribute('innerHTML')
-                    soup = BeautifulSoup(stri, 'html5lib')
-                    messages = manageHtml(soup)
-                    finished = False
-                else:
-                    lengthActual = len(elements)
-                    driver.execute_script('arguments[0].scrollTop = -' + str(scroll), conversation_pane)
-                    sleep(2)
-                    scroll += SCROLL_SIZE
+                try:
+                    conversation_pane = driver.find_element_by_xpath("//div[@class='" + CONVERSATION_PANEL + "']")
+                    elements = driver.find_elements_by_xpath("//div[@class='copyable-text']")
+                    print(contact + '  :' + str(scroll))
+                    if lengthActual == len(elements) or scroll > 10000:
+                        # Find data-testid="conversation-panel-messages" in the DOM to get class name
+                        stri = conversation_pane.get_attribute('innerHTML')
+                        soup = BeautifulSoup(stri, 'html5lib')
+                        messages = manageHtml(soup)
+                        finished = False
+                    else:
+                        lengthActual = len(elements)
+                        driver.execute_script('arguments[0].scrollTop = -' + str(scroll), conversation_pane)
+                        sleep(2)
+                        scroll += SCROLL_SIZE
+                except Exception as e:
+                    traceback.print_exc()
             for message in messages:
                 conversations.append(message.asString())
-
-            filename = EXPORT_PATH + '/conversations/{}.txt'.format(
+            contact = re.sub("[!@#$%^&*()[]{};:,./<>?\|`~-=_+]", "", contact)
+            filename = EXPORT_PATH + 'conversations/{}.txt'.format(
                 contact + str(datetime.datetime.now().timestamp()))
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             with open(filename, 'w', encoding='utf8') as f:
@@ -203,7 +219,8 @@ def get_messages(driver, contact_list):
     return conversations
 
 
-def main():
+def mainCall(contatti):
+    ## Check contacts list and dockerize
     global SCROLL_TO, SCROLL_SIZE
     SCROLL_SIZE = 600
     SCROLL_TO = 600
@@ -225,11 +242,11 @@ def main():
         contacts = set()
         length = 0
         while True:
-            contacts_sel = driver.find_elements_by_class_name(CONTACT_NAME_DIV)  # get just contacts ignoring groups
+            contacts_sel = driver.find_elements_by_class_name(CONTACT_NAME_DIV)
             contacts_sel = set([j.text for j in contacts_sel])
-            conversations.extend(get_messages(driver, list(contacts_sel - contacts)))
+            conversations.extend(get_messages(driver, list(contacts_sel - contacts), contatti))
             contacts.update(contacts_sel)
-            if (length == len(contacts) and length != 0) or length > 10:
+            if length == len(contacts) and length != 0:
                 break
             else:
                 length = len(contacts)
@@ -244,7 +261,28 @@ def main():
         print('Done')
     except Exception as e:
         traceback.print_exc()
+    finally:
+        return conversations
+
+
+@app.get('/messages')
+def getMessages():
+    args = request.args
+    print(type(args))
+    print(type(args.to_dict()))
+    print(args.get("contacts"))
+    contatti = args.get("contacts")
+    print(contatti)
+    if contatti:
+        contatti = contatti.split(",")
+    else:
+        contatti = []
+    return {"messages": list(mainCall(contatti))}
+
+
+def main():
+    mainCall([])
 
 
 if __name__ == "__main__":
-    main()
+    app.run()
