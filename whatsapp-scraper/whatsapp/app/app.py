@@ -1,5 +1,4 @@
 import datetime
-import os
 from time import sleep
 
 from bs4 import BeautifulSoup
@@ -20,17 +19,10 @@ CHROMEDRIVER_PATH = 'utils/chromedriver.exe'
 
 CONTACT_NAME_DIV = 'zoWT4'
 CONVERSATION_PANEL = '_33LGR'
-USER_DATA_DIR = 'D:/user-data'
-EXPORT_PATH = 'collected_data/'
+USER_DATA_DIR = 'C:/user-data'
 
 app = Flask(__name__)
 api = Api(app)
-
-in_memory_datastore = {
-    "COBOL": {"name": "COBOL", "publication_year": 1960, "contribution": "record data"},
-    "ALGOL": {"name": "ALGOL", "publication_year": 1958, "contribution": "scoping and nested functions"},
-    "APL": {"name": "APL", "publication_year": 1962, "contribution": "array processing"},
-}
 
 
 class MessageQuoted:
@@ -92,7 +84,6 @@ class Message:
 def manageHtml(soup):
     messages = SortedSet()
     messagesInDiv = soup.findAll('div', attrs={'class': re.compile(r"message-*")})
-    print(len(messagesInDiv))
     lastDay = ""
     lastTime = ""
     for message in messagesInDiv:
@@ -135,7 +126,6 @@ def manageHtml(soup):
             if tuo:
                 m = Message("<audio>", lastDay, lastTime, "Tu:", "", "")
                 try:
-                    m.display()
                     if (m.day):
                         m.date = datetime.datetime(int(m.day.split("/")[2]), int(m.day.split("/")[1]),
                                                    int(m.day.split("/")[0]),
@@ -146,7 +136,6 @@ def manageHtml(soup):
             else:
                 m = Message("<audio>", lastDay, lastTime, suo.text, "", "")
                 try:
-                    m.display()
                     if (m.day):
                         m.date = datetime.datetime(int(m.day.split("/")[2]), int(m.day.split("/")[1]),
                                                    int(m.day.split("/")[0]),
@@ -156,32 +145,19 @@ def manageHtml(soup):
                 messages.add(m)
     return messages
 
-
-def pane_scroll(dr):
-    global SCROLL_TO, SCROLL_SIZE
-
-    print('>>> scrolling side pane')
-    side_pane = dr.find_element_by_id('pane-side')
-    dr.execute_script('arguments[0].scrollTop = ' + str(SCROLL_TO), side_pane)
-    sleep(3)
-    SCROLL_TO += SCROLL_SIZE
-
-
-def get_messages(driver, contact_list, contatti):
+def get_messages(driver, contact, contatti):
     global SCROLL_SIZE
-    print('>>> getting messages')
     conversations = []
-    for contact in contact_list:
-
-        if (contact != "Archiviate") and (
-                contatti.__sizeof__() == 0 or contact.lower() in map(str.lower, contatti)):  # ignore archive container
-            # if (contact == "Triage forense"):  # to remove this, just for test
-            sleep(2)
-            try:
-                user = driver.find_element_by_xpath('//span[contains(@title, "{}")]'.format(contact))
-            except Exception as e:
-                traceback.print_exc()
-                break
+    if (contact != "Archiviate") and (
+            len(contatti) == 0 or contact.lower() in map(str.lower, contatti)):  # ignore archive container
+        # if (contact == "Triage forense"):  # to remove this, just for test
+        try:
+            user = driver.find_element_by_xpath('//span[contains(@title, "{}")]'.format(contact))
+            driver.find_element_by_tag_name("body")
+        except Exception as e:
+            user = ""
+            traceback.print_exc()
+        if user != "":
             user.click()
             sleep(3)
 
@@ -193,8 +169,8 @@ def get_messages(driver, contact_list, contatti):
                 try:
                     conversation_pane = driver.find_element_by_xpath("//div[@class='" + CONVERSATION_PANEL + "']")
                     elements = driver.find_elements_by_xpath("//div[@class='copyable-text']")
-                    print(contact + '  :' + str(scroll))
-                    if lengthActual == len(elements) or scroll > 10000:
+                    # print(contact + '  :' + str(scroll))
+                    if lengthActual == len(elements) or scroll > 15000:
                         # Find data-testid="conversation-panel-messages" in the DOM to get class name
                         stri = conversation_pane.get_attribute('innerHTML')
                         soup = BeautifulSoup(stri, 'html5lib')
@@ -207,20 +183,11 @@ def get_messages(driver, contact_list, contatti):
                         scroll += SCROLL_SIZE
                 except Exception as e:
                     traceback.print_exc()
-            for message in messages:
-                conversations.append(message.asString())
-            contact = re.sub("[!@#$%^&*()[]{};:,./<>?\|`~-=_+]", "", contact)
-            filename = EXPORT_PATH + 'conversations/{}.txt'.format(
-                contact + str(datetime.datetime.now().timestamp()))
-            os.makedirs(os.path.dirname(filename), exist_ok=True)
-            with open(filename, 'w', encoding='utf8') as f:
-                for line in conversations:
-                    f.write(f"{line}{os.linesep}")
+            conversations.extend(map(Message.asString, messages))
     return conversations
 
 
 def mainCall(contatti):
-    ## Check contacts list and dockerize
     global SCROLL_TO, SCROLL_SIZE
     SCROLL_SIZE = 600
     SCROLL_TO = 600
@@ -239,40 +206,41 @@ def mainCall(contatti):
     try:
         # retrieving the contacts
         print('>>> getting contact list')
-        contacts = set()
-        length = 0
-        while True:
-            contacts_sel = driver.find_elements_by_class_name(CONTACT_NAME_DIV)
-            contacts_sel = set([j.text for j in contacts_sel])
-            conversations.extend(get_messages(driver, list(contacts_sel - contacts), contatti))
-            contacts.update(contacts_sel)
-            if length == len(contacts) and length != 0:
+        scroll = 100
+        last = -50
+        paneSide = driver.find_element_by_id("pane-side")
+        listaContatti = set()
+        while (paneSide.get_attribute("scrollTop") != scroll):
+            scroll = scroll + 100
+            if last == paneSide.get_attribute("scrollTop"):
                 break
-            else:
-                length = len(contacts)
-            pane_scroll(driver)
-        print(len(contacts), "contacts retrieved")
+            last = paneSide.get_attribute("scrollTop")
+            html = paneSide.get_attribute("innerHTML")
+            soup = BeautifulSoup(html, 'html5lib')
+            contacts_sel = soup.findAll('div', attrs={'class': 'zoWT4'})
+            for j in contacts_sel:
+                if hasattr(j, "text") and len(j.text) > 0:
+                    if list(listaContatti).count(j.text) == 0:
+                        listaContatti.add(j.text)
+                        conversations.extend(get_messages(driver, j.text, contatti))
+            driver.execute_script('arguments[0].scrollTop = ' + str(scroll), paneSide)
+        print(len(listaContatti), "contacts retrieved")
         print(len(conversations), "messages retrieved")
-        filename = EXPORT_PATH + '/all.json'
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-        with open(filename, 'w', encoding='utf8') as f:
-            for line in conversations:
-                f.write(f"{line}{os.linesep}")
         print('Done')
     except Exception as e:
         traceback.print_exc()
     finally:
         return conversations
 
+@app.get('/')
+def getHello():
+    return "hello a sort"
 
 @app.get('/messages')
 def getMessages():
     args = request.args
-    print(type(args))
-    print(type(args.to_dict()))
-    print(args.get("contacts"))
+
     contatti = args.get("contacts")
-    print(contatti)
     if contatti:
         contatti = contatti.split(",")
     else:
@@ -285,4 +253,4 @@ def main():
 
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0")
