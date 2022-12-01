@@ -187,6 +187,19 @@ def get_messages(driver, contact, contatti):
     return conversations
 
 
+def set_chrome_options() -> Options:
+    """Sets chrome options for Selenium.
+    Chrome options for headless browser is enabled.
+    """
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_prefs = {}
+    chrome_options.experimental_options["prefs"] = chrome_prefs
+    chrome_prefs["profile.default_content_settings"] = {"images": 2}
+    return chrome_options
+
 def mainCall(contatti):
     global SCROLL_TO, SCROLL_SIZE
     SCROLL_SIZE = 600
@@ -196,7 +209,8 @@ def mainCall(contatti):
     options = Options()
     options.add_argument(
         'user-data-dir=' + USER_DATA_DIR)  # saving user data so you don't have to scan the QR Code again
-    driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, chrome_options=options)
+    chrome_options = set_chrome_options()
+    driver = webdriver.Chrome(options=chrome_options)
     driver.get('https://web.whatsapp.com/')
     continued = True
     while continued:
