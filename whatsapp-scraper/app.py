@@ -145,6 +145,7 @@ def manageHtml(soup):
                 messages.add(m)
     return messages
 
+
 def get_messages(driver, contact, contatti):
     global SCROLL_SIZE
     conversations = []
@@ -187,18 +188,6 @@ def get_messages(driver, contact, contatti):
     return conversations
 
 
-def set_chrome_options() -> Options:
-    """Sets chrome options for Selenium.
-    Chrome options for headless browser is enabled.
-    """
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_prefs = {}
-    chrome_options.experimental_options["prefs"] = chrome_prefs
-    chrome_prefs["profile.default_content_settings"] = {"images": 2}
-    return chrome_options
 
 def mainCall(contatti):
     global SCROLL_TO, SCROLL_SIZE
@@ -209,8 +198,7 @@ def mainCall(contatti):
     options = Options()
     options.add_argument(
         'user-data-dir=' + USER_DATA_DIR)  # saving user data so you don't have to scan the QR Code again
-    chrome_options = set_chrome_options()
-    driver = webdriver.Chrome(options=chrome_options)
+    driver = webdriver.Chrome(options=options)
     driver.get('https://web.whatsapp.com/')
     continued = True
     while continued:
@@ -240,15 +228,16 @@ def mainCall(contatti):
             driver.execute_script('arguments[0].scrollTop = ' + str(scroll), paneSide)
         print(len(listaContatti), "contacts retrieved")
         print(len(conversations), "messages retrieved")
-        print('Done')
     except Exception as e:
         traceback.print_exc()
     finally:
         return conversations
 
+
 @app.get('/')
 def getHello():
     return "hello a sort"
+
 
 @app.get('/messages')
 def getMessages():
@@ -267,4 +256,4 @@ def main():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0")
+    app.run()
