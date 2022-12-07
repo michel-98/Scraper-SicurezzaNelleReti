@@ -152,6 +152,7 @@ def get_messages(driver, contact, contatti):
     if (contact != "Archiviate") and (
             len(contatti) == 0 or contact.lower() in map(str.lower, contatti)):  # ignore archive container
         # if (contact == "Triage forense"):  # to remove this, just for test
+        sleep(2)
         try:
             user = driver.find_element_by_xpath('//span[contains(@title, "{}")]'.format(contact))
             driver.find_element_by_tag_name("body")
@@ -184,6 +185,7 @@ def get_messages(driver, contact, contatti):
                         scroll += SCROLL_SIZE
                 except Exception as e:
                     traceback.print_exc()
+                    break
             conversations.extend(map(Message.asString, messages))
     return conversations
 
@@ -198,7 +200,7 @@ def mainCall(contatti):
     options = Options()
     options.add_argument(
         'user-data-dir=' + USER_DATA_DIR)  # saving user data so you don't have to scan the QR Code again
-    driver = webdriver.Chrome(options=options)
+    driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, chrome_options=options)
     driver.get('https://web.whatsapp.com/')
     continued = True
     while continued:
@@ -256,4 +258,4 @@ def main():
 
 
 if __name__ == "__main__":
-    app.run()
+    app.run(port=5002)
