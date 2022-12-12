@@ -1,17 +1,20 @@
 import datetime
+import os
+import shutil
+import traceback
 from time import sleep
 
 from bs4 import BeautifulSoup
+from flask import Flask, jsonify
+from flask_cors import CORS
+from flask_restful import Api, request
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from sortedcontainers import SortedSet
-from flask_restful import Api, request
-from flask import Flask
-
-import traceback
 
 global SCROLL_TO, SCROLL_SIZE
 import re
+import json
 
 # Download google driver from https://chromedriver.chromium.org/downloads
 # you can set the chromedriver path on the system path and remove this variable
@@ -23,6 +26,7 @@ USER_DATA_DIR = 'C:/user-data'
 
 app = Flask(__name__)
 api = Api(app)
+CORS(app)
 
 
 class MessageQuoted:
@@ -34,6 +38,20 @@ class MessageQuoted:
         self.autore = quoteAuthor
 
 
+def json_default(value):
+    if isinstance(value, datetime.date):
+        return dict(year=value.year, month=value.month, day=value.day)
+    elif isinstance(value, Message):
+        return dict(autore=value.person,
+                    data=dict(year=value.date.year, month=value.date.month, day=value.date.day),
+                    giorno=value.day,
+                    ora=value.time,
+                    messaggio=value.text,
+                    messaggioCitato=dict(autore=value.quote.autore, messaggio=value.quote.messaggio))
+    else:
+        return value.__dict__
+
+
 class Message:
     text = ""
     day = ""
@@ -41,6 +59,10 @@ class Message:
     person = ""
     quote = MessageQuoted
     date = datetime.datetime.now()
+
+    def __dict__(self):
+        return json.dumps(self, default=json_default,
+                          sort_keys=True, indent=4)
 
     def display(self):
         if self.quote.autore != "":
@@ -186,9 +208,9 @@ def get_messages(driver, contact, contatti):
                 except Exception as e:
                     traceback.print_exc()
                     break
-            conversations.extend(map(Message.asString, messages))
+            conversations.append({"contatto": contact, "messaggi": list(messages)})
+            print(conversations)
     return conversations
-
 
 
 def mainCall(contatti):
@@ -228,17 +250,32 @@ def mainCall(contatti):
                         listaContatti.add(j.text)
                         conversations.extend(get_messages(driver, j.text, contatti))
             driver.execute_script('arguments[0].scrollTop = ' + str(scroll), paneSide)
-        print(len(listaContatti), "contacts retrieved")
-        print(len(conversations), "messages retrieved")
+        print(len(conversations), "conversations retrieved")
     except Exception as e:
         traceback.print_exc()
     finally:
+        driver.close()
         return conversations
 
 
 @app.get('/')
 def getHello():
     return "hello a sort"
+
+
+@app.get('/forget')
+def forgetUser():
+    folder = USER_DATA_DIR
+    for filename in os.listdir(folder):
+        file_path = os.path.join(folder, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print('Failed to delete %s. Reason: %s' % (file_path, e))
+    return "true"
 
 
 @app.get('/messages')
@@ -250,7 +287,8 @@ def getMessages():
         contatti = contatti.split(",")
     else:
         contatti = []
-    return {"messages": list(mainCall(contatti))}
+    return {"messages": json.dumps(mainCall(contatti), default=json_default,
+                                       sort_keys=True), "status_code": 200}
 
 
 def main():
