@@ -39,8 +39,8 @@ class MessageQuoted:
 
 
 def json_default(value):
-    if isinstance(value, datetime.date):
-        return dict(year=value.year, month=value.month, day=value.day)
+    if isinstance(value, datetime.datetime):
+        return dict(year=value.year, month=value.month, day=value.day, hour=value.hour, minutes=value.minute)
     elif isinstance(value, Message):
         return dict(autore=value.person,
                     data=dict(year=value.date.year, month=value.date.month, day=value.date.day),
@@ -288,7 +288,7 @@ def getMessages():
     else:
         contatti = []
     return {"messages": json.dumps(mainCall(contatti), default=json_default,
-                                       sort_keys=True), "status_code": 200}
+                                   sort_keys=True), "status_code": 200}
 
 
 def main():
